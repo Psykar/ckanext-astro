@@ -1,5 +1,9 @@
 import logging
-import astropy.io.fits as fits
+try:
+    import astropy.io.fits as fits
+except ImportError:
+    import pyfits as fits
+
 import wand.image as image
 import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
