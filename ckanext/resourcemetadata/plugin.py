@@ -31,25 +31,31 @@ class ResourceMetadata(plugins.SingletonPlugin):
         log.debug('this is after upload calling')
 
         additional_metadata = self.get_metadata(file_path)
-        pkg_dict['resources'][-1]['id'] = resource_id
-        pkg_dict['resources'][-1].update(additional_metadata)
-        pkg_dict['resources'][-1]['format'] = 'fits'
 
-        self.generate_preview(file_path, pkg_dict)
+        for n, p in enumerate(pkg_dict['resources']):
+            if p.get('id') == resource_id:
+                break
+        else:
+            n = -1
+            pkg_dict['resources'][n]['id'] = resource_id
 
+        pkg_dict['resources'][n].update(additional_metadata)
+        pkg_dict['resources'][n]['format'] = 'fits'
+
+        self.generate_preview(file_path)
+
+        context['model'].repo.session.rollback()
         context['defer_commit'] = True
         toolkit.get_action('package_update')(context, pkg_dict)
         context.pop('defer_commit')
 
-
-
     def get_metadata(self, file_path):
-        fits_keywords = ('SIMPLE', 'BITPIX', 'NAXIS')
         hdulist = fits.open(file_path, memmap=True)
         header = hdulist[0].header
 
-        metadata = [dict((keyword, header[keyword]) 
-            for keyword in fits_keywords)]
+        #fits_keywords = ('SIMPLE', 'BITPIX', 'NAXIS')
+        #metadata = [dict((keyword, header[keyword]) 
+        #    for keyword in fits_keywords)]
 
         res_meta = {}
         for k, v in header.items():
@@ -59,13 +65,12 @@ class ResourceMetadata(plugins.SingletonPlugin):
         hdulist.close()
         return res_meta
 
-    def generate_preview(self, file_path, pkg_dict):
+    def generate_preview(self, file_path):
         img = image.Image(filename=file_path)
         preview = img.convert('jpeg')
         preview.normalize()
         preview.resize(width=879)
         preview.save(filename=file_path + '.jpg')
-        pkg_dict['resources'][-1]['preview'] = file_path + '.jpg'
 
     def can_preview(self, data_dict):
         format = data_dict['resource']['format']
