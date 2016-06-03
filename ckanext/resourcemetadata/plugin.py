@@ -1,4 +1,7 @@
 import logging
+
+from ckan.lib.uploader import ResourceUpload
+
 try:
     import astropy.io.fits as fits
 except ImportError:
@@ -11,33 +14,19 @@ import ckan.plugins.toolkit as toolkit
 
 log = logging.getLogger(__name__)
 
-class ResourceMetadata(plugins.SingletonPlugin):
-    plugins.implements(plugins.IResourceUpload)
-    plugins.implements(plugins.IResourcePreview)
-    plugins.implements(plugins.IConfigurer)
-    plugins.implements(plugins.IRoutes)
 
-    def before_map(self, map):
-        return map
+class Uploader(ResourceUpload):
+    def __init__(self, resource):
+        super(Uploader, self).__init__(resource)
 
-    def after_map(self, map):
-        fits_preview_controller = 'ckanext.resourcemetadata.controllers:FitsPreview'
-        map.connect('/dataset/{id}/resource/{resource_id}/fitspreview',
-                    controller=fits_preview_controller,
-                    action='fitspreview')
-        return map
 
-    def after_upload(self, context, pkg_dict, resource_id, file_path):
+    def upload(self, id, **kwargs):
+        super(Uploader, self).upload(id, **kwargs)
         log.debug('this is after upload calling')
 
-        additional_metadata = self.get_metadata(file_path)
+        file_path = self.get_path(id)
 
-        for n, p in enumerate(pkg_dict['resources']):
-            if p.get('id') == resource_id:
-                break
-        else:
-            n = -1
-            pkg_dict['resources'][n]['id'] = resource_id
+        additional_metadata = self.get_metadata(file_path)
 
         pkg_dict['resources'][n].update(additional_metadata)
         pkg_dict['resources'][n]['format'] = 'fits'
@@ -49,12 +38,13 @@ class ResourceMetadata(plugins.SingletonPlugin):
         toolkit.get_action('package_update')(context, pkg_dict)
         context.pop('defer_commit')
 
+
     def get_metadata(self, file_path):
         hdulist = fits.open(file_path, memmap=True)
         header = hdulist[0].header
 
-        #fits_keywords = ('SIMPLE', 'BITPIX', 'NAXIS')
-        #metadata = [dict((keyword, header[keyword]) 
+        # fits_keywords = ('SIMPLE', 'BITPIX', 'NAXIS')
+        # metadata = [dict((keyword, header[keyword])
         #    for keyword in fits_keywords)]
 
         res_meta = {}
@@ -72,7 +62,18 @@ class ResourceMetadata(plugins.SingletonPlugin):
         preview.resize(width=879)
         preview.save(filename=file_path + '.jpg')
 
-    def can_preview(self, data_dict):
+
+class ResourceMetadata(plugins.SingletonPlugin):
+    plugins.implements(plugins.IConfigurer)
+    plugins.implements(plugins.IResourceView)
+
+    # IConfigurer
+    def update_config(self, config):
+        toolkit.add_template_directory(config, 'theme/templates')
+
+    # IResourceView
+
+    def can_view(self, data_dict):
         format = data_dict['resource']['format']
         return format.lower() in set(['fits', 'fts', 'fit'])
 
@@ -83,8 +84,21 @@ class ResourceMetadata(plugins.SingletonPlugin):
         preview_url = '/dataset/{0}/resource/{1}/fitspreview'.format(data_dict['package']['id'], data_dict['resource']['id'])
         toolkit.c.resource['preview_url'] = preview_url
 
-    def update_config(self, config):
-        toolkit.add_template_directory(config, 'theme/templates')
 
-    def preview_template(self, context, data_dict):
-       return 'fits.html' 
+
+
+    def view_template(self, context, data_dict):
+        return 'fits.html'
+
+    def info(self):
+        return {
+            'name': 'fits_view',
+            'title': toolkit._('FITS View'),
+            'iframed': False,
+            'preview_enabled': True,
+            # 'schema': {
+            #     'meta_data': []
+            # }
+        }
+
+
